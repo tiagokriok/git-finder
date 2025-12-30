@@ -13,8 +13,11 @@ type Config struct {
 }
 
 func DefaultConfig() (*Config, error) {
+	return defaultConfig()
+}
 
-	var homeDir, err = os.UserHomeDir()
+func defaultConfig() (*Config, error) {
+	homeDir, err := os.UserHomeDir()
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user home directory: %w", err)
@@ -25,7 +28,6 @@ func DefaultConfig() (*Config, error) {
 		SearchPaths: []string{
 			filepath.Join(homeDir, "dev"), filepath.Join(homeDir, "projects"), filepath.Join(homeDir, "repos"), filepath.Join(homeDir, "workspaces")},
 	}, nil
-
 }
 
 func ConfigPath() (string, error) {
@@ -44,15 +46,18 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to get config path: %w", err)
 	}
 
-	var data []byte
-	data, err = os.ReadFile(configPath)
+	return load(configPath)
+}
+
+func load(configPath string) (*Config, error) {
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			cfg, err := DefaultConfig()
+			cfg, err := defaultConfig()
 			if err != nil {
 				return nil, fmt.Errorf("failed to create default config: %w", err)
 			}
-			err = cfg.Save()
+			err = save(configPath, cfg)
 			if err != nil {
 				return nil, fmt.Errorf("failed to save default config: %w", err)
 			}
@@ -76,8 +81,11 @@ func (c *Config) Save() error {
 		return fmt.Errorf("failed to get config path: %w", err)
 	}
 
-	var data []byte
-	data, err = json.MarshalIndent(c, "", "  ")
+	return save(configPath, c)
+}
+
+func save(configPath string, cfg *Config) error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
@@ -87,5 +95,10 @@ func (c *Config) Save() error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	return os.WriteFile(configPath, data, 0644)
+	err = os.WriteFile(configPath, data, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
 }
