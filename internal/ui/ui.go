@@ -12,6 +12,14 @@ import (
 
 var selectedRepository *scanner.Repository
 
+const (
+	maxHeight       = 10
+	boxPadding      = 2
+	searchBoxHeight = 3
+	footerHeight    = 3
+	searchBoxWidth  = 50
+)
+
 type Model struct {
 	repositories []scanner.Repository
 	filtered     []scanner.Repository
@@ -46,33 +54,61 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	var s string
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+	// headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
 
-	s += headerStyle.Render("🔍 Git Finder") + "\n"
-	s += strings.Repeat("─", 40) + "\n\n"
+	searchBoxStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("205")).Padding(0, 1).Width(searchBoxWidth).Align(lipgloss.Left)
 
-	s += fmt.Sprintf("Search: %s\n\n", m.searchInput)
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Bold(true)
 
+	availableHeight := m.height - footerHeight - 4
+	if availableHeight < 3 {
+		availableHeight = 3
+	}
+
+	// header := headerStyle.Render("🔍 Git Finder")
+	searchLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Search:")
+	searchInput := m.searchInput
+	searchBox := searchBoxStyle.Render(searchInput)
+
+	var reposList string
 	if len(m.filtered) == 0 {
-		s += "No repositories found.\n"
+		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
+		reposList = emptyStyle.Render("No repositories found")
 	} else {
-		selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Bold(true)
-		for i, repo := range m.filtered {
+		var lines []string
+
+		itemsToShow := len(m.filtered)
+		if itemsToShow > maxHeight {
+			itemsToShow = maxHeight
+		}
+
+		for i := 0; i < itemsToShow && i < availableHeight; i++ {
+			repo := m.filtered[i]
 			line := fmt.Sprintf("%s (%s)", repo.Name, repo.Path)
 
 			if i == m.selectedIdx {
-				s += selectedStyle.Render("▶ "+line) + "\n"
+				lines = append(lines, selectedStyle.Render("▶ "+line))
 			} else {
-				s += "  " + line + "\n"
+				lines = append(lines, "  "+line)
 			}
 		}
+
+		reposList = strings.Join(lines, "\n")
 	}
+	paginationInfo := m.getPaginationInfo()
+	paginationStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
+	pagination := paginationStyle.Render(paginationInfo)
 
-	s += "\n" + strings.Repeat("─", 40) + "\n"
-	s += "↑/↓: navigate | Enter: select | Esc: exit\n"
+	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Align(lipgloss.Center)
+	footer := footerStyle.Render("↑/↓: navigate | Enter: select | Esc: exit")
 
-	return s
+	content := lipgloss.JoinVertical(lipgloss.Center, searchLabel, searchBox, "", reposList, pagination)
+
+	centered := lipgloss.Place(m.width, m.height-footerHeight, lipgloss.Center, lipgloss.Center, content)
+
+	fullView := lipgloss.JoinVertical(lipgloss.Left, centered, footer)
+
+	return fullView
 }
 
 func (m *Model) updateFiltered() {
@@ -92,6 +128,23 @@ func (m *Model) updateFiltered() {
 	for i, match := range matches {
 		m.filtered[i] = m.repositories[match.Index]
 	}
+}
+
+func (m Model) getPaginationInfo() string {
+	if len(m.filtered) == 0 {
+		return ""
+	}
+
+	itemsToShow := len(m.filtered)
+	if itemsToShow > maxHeight {
+		itemsToShow = maxHeight
+	}
+
+	if len(m.filtered) <= maxHeight {
+		return fmt.Sprintf("(%d results)", len(m.filtered))
+	}
+
+	return fmt.Sprintf("Showing %d of %d", itemsToShow, len(m.filtered))
 }
 
 func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
