@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -54,7 +55,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	// headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
 
 	searchBoxStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("205")).Padding(0, 1).Width(searchBoxWidth).Align(lipgloss.Left)
 
@@ -65,7 +65,6 @@ func (m Model) View() string {
 		availableHeight = 3
 	}
 
-	// header := headerStyle.Render("🔍 Git Finder")
 	searchLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Search:")
 	searchInput := m.searchInput
 	searchBox := searchBoxStyle.Render(searchInput)
@@ -84,7 +83,8 @@ func (m Model) View() string {
 
 		for i := 0; i < itemsToShow && i < availableHeight; i++ {
 			repo := m.filtered[i]
-			line := fmt.Sprintf("%s (%s)", repo.Name, repo.Path)
+			displayPath := formatRepoPath(repo.Path)
+			line := fmt.Sprintf("%s (%s)", repo.Name, displayPath)
 
 			if i == m.selectedIdx {
 				lines = append(lines, selectedStyle.Render("▶ "+line))
@@ -182,6 +182,18 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selectedIdx = 0
 		return m, nil
 	}
+}
+
+func formatRepoPath(fullPath string) string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fullPath
+	}
+
+	if strings.HasPrefix(fullPath, homeDir) {
+		return strings.TrimPrefix(fullPath, homeDir+"/")
+	}
+	return fullPath
 }
 
 func GetSelectedRepository() *scanner.Repository {
