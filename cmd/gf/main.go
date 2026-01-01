@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	"github.com/tiagokriok/gf/internal/config"
+	"github.com/tiagokriok/gf/internal/history"
 	"github.com/tiagokriok/gf/internal/scanner"
 	"github.com/tiagokriok/gf/internal/ui"
 )
@@ -38,6 +39,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	recents, err := history.LoadRecent()
+	if err == nil {
+		repos = scanner.ReorderByRecent(repos, recents)
+	}
+
 	if len(repos) == 0 {
 		fmt.Fprintf(os.Stderr, "No repositories found\n")
 		os.Exit(1)
@@ -57,6 +63,12 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening repository in editor: %v\n", err)
 		os.Exit(1)
+	}
+
+	recent, err := history.LoadRecent()
+	if err == nil {
+		recent.Add(selected.Path)
+		recent.Save()
 	}
 
 }

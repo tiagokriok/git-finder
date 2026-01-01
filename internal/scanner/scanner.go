@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/tiagokriok/gf/internal/history"
 )
 
 type Repository struct {
@@ -98,4 +100,33 @@ func Scan(searchPaths []string) ([]Repository, error) {
 	})
 
 	return repos, nil
+}
+
+func ReorderByRecent(repos []Repository, recent *history.Recent) []Repository {
+	recentPaths := recent.GetRecent()
+
+	recentMap := make(map[string]int)
+	for i, path := range recentPaths {
+		recentMap[path] = i
+	}
+
+	sort.Slice(repos, func(i, j int) bool {
+		posI, inI := recentMap[repos[i].Path]
+		posJ, inJ := recentMap[repos[j].Path]
+
+		if inI && inJ {
+			return posI < posJ
+		}
+
+		if inI {
+			return true
+		}
+		if inJ {
+			return false
+		}
+
+		return repos[i].Name < repos[j].Name
+	})
+
+	return repos
 }

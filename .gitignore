@@ -28,7 +28,6 @@ go.work
 
 # Build artifacts
 gf
-/gf
 
 # Local development
 .env

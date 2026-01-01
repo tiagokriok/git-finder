@@ -131,7 +131,7 @@ func (m SetupModel) View() string {
 func (m SetupModel) editorView() string {
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
 
-	title := headerStyle.Render("🎯 Git Finder Setup")
+	title := headerStyle.Render("🎯 Git Fuzzy Setup")
 	subtitle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Step 1 of 2: Editor")
 
 	inputStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1).Width(50)
@@ -148,7 +148,7 @@ func (m SetupModel) editorView() string {
 func (m SetupModel) pathsView() string {
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
 
-	title := headerStyle.Render("🎯 Git Finder Setup")
+	title := headerStyle.Render("🎯 Git Fuzzy Setup")
 	subtitle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Step 2 of 2: Search Paths")
 
 	inputStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("240")).Padding(0, 1).Width(50)

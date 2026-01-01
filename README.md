@@ -1,4 +1,4 @@
-# GF - Git Repository Finder
+# GF - Git Fuzzy
 
 A high-performance CLI tool for discovering and opening Git repositories with interactive fuzzy search. Built with Go, leveraging modern terminal UI patterns and efficient filesystem traversal.
 
