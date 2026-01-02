@@ -60,10 +60,7 @@ func (m Model) View() string {
 
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Bold(true)
 
-	availableHeight := m.height - footerHeight - 4
-	if availableHeight < 3 {
-		availableHeight = 3
-	}
+	availableHeight := max(m.height-footerHeight-4, 3)
 
 	searchLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Search:")
 	searchInput := m.searchInput
@@ -76,10 +73,7 @@ func (m Model) View() string {
 	} else {
 		var lines []string
 
-		itemsToShow := len(m.filtered)
-		if itemsToShow > maxHeight {
-			itemsToShow = maxHeight
-		}
+		itemsToShow := min(len(m.filtered), maxHeight)
 
 		for i := 0; i < itemsToShow && i < availableHeight; i++ {
 			repo := m.filtered[i]
@@ -135,10 +129,7 @@ func (m Model) getPaginationInfo() string {
 		return ""
 	}
 
-	itemsToShow := len(m.filtered)
-	if itemsToShow > maxHeight {
-		itemsToShow = maxHeight
-	}
+	itemsToShow := min(len(m.filtered), maxHeight)
 
 	if len(m.filtered) <= maxHeight {
 		return fmt.Sprintf("(%d results)", len(m.filtered))
@@ -158,7 +149,7 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "down", "tab":
-		if m.selectedIdx < len(m.filtered)-1 {
+		if m.selectedIdx < min(len(m.filtered), maxHeight)-1 {
 			m.selectedIdx++
 		}
 		return m, nil
