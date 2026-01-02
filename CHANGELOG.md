@@ -68,6 +68,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.4] - 2026-01-02
+
+### ⚠️ BREAKING CHANGES
+
+- **Configuration folder renamed**: `~/.config/gf/` → `~/.config/gitf/`
+  - If upgrading from v0.1.2 or earlier, manually move your config:
+    ```bash
+    mkdir -p ~/.config/gitf
+    mv ~/.config/gf/config.json ~/.config/gitf/config.json
+    rm -rf ~/.config/gf
+    ```
+
+### 🔧 Changed
+
+- Binary directory renamed from `cmd/gf/` to `cmd/gitf/`
+- Config path changed from `~/.config/gf/config.json` to `~/.config/gitf/config.json`
+- Updated all build scripts and documentation
+
+### 📦 Installation
+
+- **go install**: `go install github.com/tiagokriok/Git-Fuzzy/cmd/gitf@v0.1.4`
+- Pre-built binaries available for all platforms
+
+---
+
+## [0.1.3] - 2026-01-02
+
+### 🔧 Changed
+
+- Fixed `go install` command to produce `gitf` binary instead of `gf`
+- Renamed `cmd/gf` directory to `cmd/gitf` for proper naming convention
+- Updated build scripts and documentation
+
+### 📦 Note
+
+- This version still uses `~/.config/gf/config.json` path
+
+---
+
 ## [Unreleased]
 
 ### Planned Features
