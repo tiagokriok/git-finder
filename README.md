@@ -18,7 +18,7 @@ A high-performance CLI tool for discovering and opening Git repositories with in
 #### Using `go install` (Fastest) ⭐
 
 ```bash
-go install github.com/tiagokriok/Git-Fuzzy/cmd/gf@latest
+go install github.com/tiagokriok/Git-Fuzzy/cmd/gitf@latest
 gitf
 ```
 
@@ -40,14 +40,14 @@ make install        # Install to $GOPATH/bin
 ```bash
 git clone https://github.com/tiagokriok/Git-Fuzzy.git
 cd Git-Fuzzy
-go build -o gitf ./cmd/gf
+go build -o gitf ./cmd/gitf
 sudo mv gitf /usr/local/bin/  # Optional: add to PATH
 ```
 
 ### Basic Usage
 
 ```bash
-gf
+gitf
 ```
 
 On first run, an interactive wizard creates `~/.config/gf/config.json`:
@@ -100,7 +100,7 @@ make dev               # Full development workflow (clean, fmt, lint, test, buil
 
 ```
 gf/
-├── cmd/gf/
+├── cmd/gitf/
 │   └── main.go                      # Application entry point & editor integration
 ├── internal/
 │   ├── config/
@@ -135,7 +135,7 @@ gf/
 
 ```bash
 # Build
-go build -o gf ./cmd/gf
+go build -o gitf ./cmd/gitf
 
 # Run tests with verbose output
 go test -v ./...

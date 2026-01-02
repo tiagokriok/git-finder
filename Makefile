@@ -25,14 +25,14 @@ help:
 # Build the binary
 build:
 	@echo "🔨 Building $(BINARY_NAME)..."
-	@go build -o $(BINARY_PATH) ./cmd/gf
+	@go build -o $(BINARY_PATH) ./cmd/gitf
 	@echo "✅ Build complete: $(BINARY_PATH)"
 	@du -h $(BINARY_PATH)
 
 # Build optimized binary (smaller size)
 build-optimized:
 	@echo "🔨 Building optimized $(BINARY_NAME)..."
-	@go build $(BUILD_FLAGS) -o $(BINARY_PATH) ./cmd/gf
+	@go build $(BUILD_FLAGS) -o $(BINARY_PATH) ./cmd/gitf
 	@echo "✅ Optimized build complete: $(BINARY_PATH)"
 	@du -h $(BINARY_PATH)
 
