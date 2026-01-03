@@ -26,6 +26,7 @@ type Model struct {
 	filtered     []scanner.Repository
 	searchInput  string
 	selectedIdx  int
+	scrollOffset int
 	width        int
 	height       int
 	err          error
@@ -75,12 +76,23 @@ func (m Model) View() string {
 
 		itemsToShow := min(len(m.filtered), maxHeight)
 
+		if m.selectedIdx < m.scrollOffset {
+			m.scrollOffset = m.selectedIdx
+		}
+		if m.selectedIdx >= m.scrollOffset+itemsToShow {
+			m.scrollOffset = m.selectedIdx - itemsToShow + 1
+		}
+
 		for i := 0; i < itemsToShow && i < availableHeight; i++ {
-			repo := m.filtered[i]
+			repoIdx := m.scrollOffset + i
+			if repoIdx >= len(m.filtered) {
+				break
+			}
+			repo := m.filtered[repoIdx]
 			displayPath := formatRepoPath(repo.Path)
 			line := fmt.Sprintf("%s (%s)", repo.Name, displayPath)
 
-			if i == m.selectedIdx {
+			if repoIdx == m.selectedIdx {
 				lines = append(lines, selectedStyle.Render("▶ "+line))
 			} else {
 				lines = append(lines, "  "+line)
@@ -149,7 +161,7 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "down", "tab":
-		if m.selectedIdx < min(len(m.filtered), maxHeight)-1 {
+		if m.selectedIdx < len(m.filtered)-1 {
 			m.selectedIdx++
 		}
 		return m, nil
@@ -165,12 +177,14 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.searchInput = m.searchInput[:len(m.searchInput)-1]
 			m.updateFiltered()
 			m.selectedIdx = 0
+			m.scrollOffset = 0
 		}
 		return m, nil
 	default:
 		m.searchInput += msg.String()
 		m.updateFiltered()
 		m.selectedIdx = 0
+		m.scrollOffset = 0
 		return m, nil
 	}
 }
