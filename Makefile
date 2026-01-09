@@ -3,8 +3,15 @@
 # Variables
 BINARY_NAME=gitf
 BINARY_PATH=./$(BINARY_NAME)
-VERSION?=0.1.0
-BUILD_FLAGS=-ldflags "-s -w"
+VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "v0.1.4")
+COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+DATE?=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+BUILT_BY?=make
+BUILD_FLAGS=-ldflags "-s -w \
+	-X main.version=$(VERSION) \
+	-X main.commit=$(COMMIT) \
+	-X main.date=$(DATE) \
+	-X main.builtBy=$(BUILT_BY)"
 
 # Default target
 help:
@@ -24,14 +31,14 @@ help:
 
 # Build the binary
 build:
-	@echo "🔨 Building $(BINARY_NAME)..."
-	@go build -o $(BINARY_PATH) ./cmd/gitf
+	@echo "🔨 Building $(BINARY_NAME) $(VERSION)..."
+	@go build $(BUILD_FLAGS) -o $(BINARY_PATH) ./cmd/gitf
 	@echo "✅ Build complete: $(BINARY_PATH)"
 	@du -h $(BINARY_PATH)
 
 # Build optimized binary (smaller size)
 build-optimized:
-	@echo "🔨 Building optimized $(BINARY_NAME)..."
+	@echo "🔨 Building optimized $(BINARY_NAME) $(VERSION)..."
 	@go build $(BUILD_FLAGS) -o $(BINARY_PATH) ./cmd/gitf
 	@echo "✅ Optimized build complete: $(BINARY_PATH)"
 	@du -h $(BINARY_PATH)
