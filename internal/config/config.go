@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/tiagokriok/Git-Fuzzy/internal/platform"
 )
 
 type Config struct {
 	Editor      string   `json:"editor"`
 	SearchPaths []string `json:"search_paths"`
+	FileManager string   `json:"file_manager,omitempty"`
+	Terminal    string   `json:"terminal,omitempty"`
 }
 
 func DefaultConfig() (*Config, error) {
@@ -27,6 +31,8 @@ func defaultConfig() (*Config, error) {
 		Editor: "nvim",
 		SearchPaths: []string{
 			filepath.Join(homeDir, "dev"), filepath.Join(homeDir, "projects"), filepath.Join(homeDir, "repos"), filepath.Join(homeDir, "workspaces")},
+		FileManager: platform.DetectFileManager(),
+		Terminal:    platform.DetectTerminal(),
 	}, nil
 }
 
@@ -90,4 +96,20 @@ func save(configPath string, cfg *Config) error {
 	}
 
 	return nil
+}
+
+// GetFileManager returns configured file manager or auto-detects if empty
+func (c *Config) GetFileManager() string {
+	if c.FileManager != "" {
+		return c.FileManager
+	}
+	return platform.DetectFileManager()
+}
+
+// GetTerminal returns configured terminal or auto-detects if empty
+func (c *Config) GetTerminal() string {
+	if c.Terminal != "" {
+		return c.Terminal
+	}
+	return platform.DetectTerminal()
 }

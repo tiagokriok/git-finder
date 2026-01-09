@@ -221,11 +221,22 @@ make dev               # Full development workflow (clean, fmt, lint, test, buil
 
 ## Keyboard Shortcuts
 
+### Main View
+
 - `↑` / `↓` or `Tab` / `Shift+Tab`: Navigate repositories
 - `Type`: Filter by repository name (fuzzy search)
-- `Enter`: Open selected repository in editor
 - `Backspace`: Delete character from search
-- `Esc` / `Ctrl+C`: Exit without selection
+- `Enter`: Open selected repository in editor
+- `Ctrl+O`: Open file manager at repository location
+- `Ctrl+T`: Open terminal in repository directory
+- `Ctrl+B`: Open remote repository in browser (GitHub/GitLab)
+- `Ctrl+G`: Show git status in modal overlay
+- `Esc` / `Ctrl+C`: Exit application
+
+### Git Status Modal
+
+- `↑` / `↓` or `j` / `k`: Scroll through git status
+- `Esc` or `q`: Close modal and return to main view
 
 ## Technical Architecture
 
