@@ -96,7 +96,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no repositories found in search paths")
 	}
 
-	selected, err := ui.Run(repos)
+	selected, err := ui.Run(repos, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to run UI: %w", err)
 	}
