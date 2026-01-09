@@ -15,18 +15,18 @@ A high-performance CLI tool for discovering and opening Git repositories with in
 
 ### Installation
 
-#### Using `go install` (Fastest) ⭐
+**Requirements**: Go 1.25.5 or higher
+
+#### Option 1: Using `go install` (Fastest) ⭐
 
 ```bash
 go install github.com/tiagokriok/Git-Fuzzy/cmd/gitf@latest
 gitf
 ```
 
-This installs the latest version directly to `$GOPATH/bin`. Works on Linux, macOS, and Windows.
+This installs directly to `$GOPATH/bin` (ensure `$GOPATH/bin` is in your `$PATH`).
 
-**Requirements**: Go 1.25.5 or higher
-
-#### Using Makefile (Recommended for Development)
+#### Option 2: Using Makefile (Recommended for Development)
 
 ```bash
 git clone https://github.com/tiagokriok/Git-Fuzzy.git
@@ -35,36 +35,169 @@ make build          # Build the binary
 make install        # Install to $GOPATH/bin
 ```
 
-#### Manual Build from Source
+#### Option 3: Manual Build from Source
 
+##### Linux
 ```bash
 git clone https://github.com/tiagokriok/Git-Fuzzy.git
 cd Git-Fuzzy
 go build -o gitf ./cmd/gitf
-sudo mv gitf /usr/local/bin/  # Optional: add to PATH
+sudo mv gitf /usr/local/bin/  # Install system-wide
+# OR
+mv gitf ~/.local/bin/         # Install user-local
 ```
 
-### Basic Usage
+##### macOS
+```bash
+git clone https://github.com/tiagokriok/Git-Fuzzy.git
+cd Git-Fuzzy
+go build -o gitf ./cmd/gitf
+sudo mv gitf /usr/local/bin/  # Install system-wide
+# OR using Homebrew path
+mv gitf /usr/local/opt/gitf/bin/
+```
+
+##### Windows (PowerShell)
+```powershell
+git clone https://github.com/tiagokriok/Git-Fuzzy.git
+cd Git-Fuzzy
+go build -o gitf.exe ./cmd/gitf
+Move-Item gitf.exe $env:GOPATH\bin\  # Install to GOPATH/bin
+```
+
+### Initial Setup & Configuration Wizard
+
+On first run, GF automatically launches an **interactive setup wizard** that:
+
+1. **Creates config directory**: `~/.config/gitf/` (Linux/macOS) or `%APPDATA%\gitf\` (Windows)
+2. **Prompts for editor selection**: Enter your preferred editor command
+3. **Prompts for repository paths**: Enter directories to scan for Git repositories
+
+#### Running the Setup Wizard
+
+Simply run `gitf` for the first time:
 
 ```bash
 gitf
 ```
 
-On first run, an interactive wizard creates `~/.config/gitf/config.json`:
+The wizard will interactively guide you through configuration. It's implemented in `internal/ui/setup.go`.
 
+#### Example Setup Wizard Flow
+
+```
+Welcome to Git Fuzzy Setup!
+
+Enter your preferred editor (nvim, vim, code, etc.): nvim
+
+Enter repository search paths (one per line, empty line to finish):
+Path 1: ~/dev
+Path 2: ~/projects
+Path 3: ~/work
+Path 4: [empty - wizard finishes]
+
+Config saved to ~/.config/gitf/config.json
+```
+
+### How to Configure Repository Paths
+
+Repository paths tell GF where to scan for Git repositories. You can configure them in two ways:
+
+#### Method 1: Interactive Setup Wizard
+
+Run the wizard again at any time:
+```bash
+gitf --setup
+```
+
+Or simply delete the config and run `gitf`:
+```bash
+rm ~/.config/gitf/config.json
+gitf
+```
+
+#### Method 2: Direct Config File Editing
+
+Edit `~/.config/gitf/config.json` directly:
+
+**Linux/macOS:**
+```bash
+nano ~/.config/gitf/config.json
+```
+
+**Windows (PowerShell):**
+```powershell
+notepad $env:APPDATA\gitf\config.json
+```
+
+### Configuration File Examples
+
+#### Linux/macOS Example
 ```json
 {
   "editor": "nvim",
   "search_paths": [
-    "~/dev",
-    "~/projects",
-    "~/repos",
-    "~/workspaces"
+    "/home/user/dev",
+    "/home/user/projects",
+    "/home/user/work",
+    "/opt/repositories"
   ]
 }
 ```
 
-Customize by editing the configuration file directly or re-running the setup wizard.
+**Common macOS paths:**
+```json
+{
+  "editor": "code",
+  "search_paths": [
+    "~/Developer",
+    "~/Projects",
+    "~/workspace",
+    "/Volumes/external-drive/repos"
+  ]
+}
+```
+
+#### Windows Example (PowerShell format)
+```json
+{
+  "editor": "code",
+  "search_paths": [
+    "C:\\Users\\YourUsername\\dev",
+    "C:\\Users\\YourUsername\\projects",
+    "C:\\workspace",
+    "D:\\repositories"
+  ]
+}
+```
+
+Or using backslash escaping in JSON:
+```json
+{
+  "editor": "code.exe",
+  "search_paths": [
+    "C:\\Users\\YourUsername\\source\\repos",
+    "C:\\work",
+    "E:\\projects"
+  ]
+}
+```
+
+### Basic Usage
+
+After configuration, simply run:
+
+```bash
+gitf
+```
+
+GF will:
+1. Scan all configured `search_paths` for Git repositories
+2. Display them in an interactive terminal UI
+3. Let you filter by typing (fuzzy search)
+4. Open your selection in the configured editor
+
+**Note**: GF intelligently skips common directories like `node_modules`, `vendor`, `.git`, and virtual environments to ensure fast scanning even in large codebases.
 
 ### Makefile Commands
 
@@ -185,27 +318,39 @@ go mod download
 
 ## Configuration
 
-Configuration is stored in `~/.config/gitf/config.json` and created automatically on first run.
+Configuration is stored in `~/.config/gitf/config.json` (Linux/macOS) or `%APPDATA%\gitf\config.json` (Windows) and created automatically on first run via the setup wizard.
 
 ### Configuration Options
 
 | Option | Type | Description | Example |
 |--------|------|-------------|---------|
-| `editor` | string | Command to launch when opening repository | `"nvim"`, `"code"`, `"vim"` |
-| `search_paths` | array | Directories to recursively scan | `["/home/user/dev", "/work"]` |
+| `editor` | string | Command to launch when opening repository | `"nvim"`, `"code"`, `"vim"`, `"code.exe"` (Windows) |
+| `search_paths` | array | Directories to recursively scan for Git repos | `["/home/user/dev", "/work"]` or `["C:\\\\Users\\\\user\\\\dev"]` |
 
-### Configuration Example
+### Configuration File Locations
 
-```json
-{
-  "editor": "nvim",
-  "search_paths": [
-    "/home/user/dev",
-    "/home/user/projects",
-    "/home/user/work",
-    "/opt/services"
-  ]
-}
+| OS | Default Location |
+|----|------------------|
+| **Linux** | `~/.config/gitf/config.json` |
+| **macOS** | `~/.config/gitf/config.json` |
+| **Windows** | `%APPDATA%\gitf\config.json` |
+
+### How to Edit Configuration
+
+**Option 1: Use the setup wizard**
+```bash
+gitf --setup  # Re-run interactive wizard
+```
+
+**Option 2: Manual edit (Linux/macOS)**
+```bash
+nano ~/.config/gitf/config.json
+vim ~/.config/gitf/config.json
+```
+
+**Option 3: Manual edit (Windows PowerShell)**
+```powershell
+notepad $env:APPDATA\gitf\config.json
 ```
 
 ### Performance Optimization
