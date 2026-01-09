@@ -4,8 +4,14 @@
 # Usage: ./build-release.sh [version]
 
 VERSION="${1:-0.1.0}"
+COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 BUILD_DIR="dist"
-LDFLAGS="-s -w -X main.Version=${VERSION}"
+LDFLAGS="-s -w \
+	-X main.version=${VERSION} \
+	-X main.commit=${COMMIT} \
+	-X main.date=${DATE} \
+	-X main.builtBy=release-script"
 
 echo "🚀 Building GitF v${VERSION} for multiple platforms..."
 mkdir -p "${BUILD_DIR}"
