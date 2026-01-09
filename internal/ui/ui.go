@@ -43,6 +43,7 @@ type Model struct {
 	err              error
 	viewMode         ViewMode
 	gitStatusContent string
+	gitStatusData    *git.StatusData
 	gitStatusScroll  int
 	config           *config.Config
 }
@@ -142,34 +143,253 @@ func (m Model) viewNormal() string {
 }
 
 func (m Model) viewGitStatus() string {
+	if m.gitStatusData == nil {
+		return m.renderGitStatusError()
+	}
+	return m.renderDetailedGitStatus()
+}
+
+func (m Model) renderGitStatusError() string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
 	title := titleStyle.Render("📊 Git Status")
 
 	borderStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("205")).
+		BorderForeground(lipgloss.Color("240")).
 		Padding(1, 2).
 		Width(min(m.width-4, 80))
 
-	// Handle scrolling
-	lines := strings.Split(m.gitStatusContent, "\n")
-	visibleHeight := min(m.height-10, 20)
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	errorMsg := errorStyle.Render(m.gitStatusContent)
 
-	if m.gitStatusScroll >= len(lines)-visibleHeight {
-		m.gitStatusScroll = max(0, len(lines)-visibleHeight)
-	}
-
-	endIdx := min(m.gitStatusScroll+visibleHeight, len(lines))
-	visibleContent := strings.Join(lines[m.gitStatusScroll:endIdx], "\n")
-
-	content := borderStyle.Render(visibleContent)
+	content := borderStyle.Render(errorMsg)
 
 	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Align(lipgloss.Center)
-	footer := footerStyle.Render("↑/↓ or j/k: scroll | Esc or q: close")
+	footer := footerStyle.Render("Esc or q: close")
 
 	fullView := lipgloss.JoinVertical(lipgloss.Center, title, "", content, "", footer)
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, fullView)
+}
+
+func (m Model) renderDetailedGitStatus() string {
+	accentColor := lipgloss.Color("205")
+	headerColor := lipgloss.Color("46")
+	statColor := lipgloss.Color("240")
+	borderColor := lipgloss.Color("240")
+
+	data := m.gitStatusData
+
+	// ========== BRANCH HEADER ==========
+	branchStyle := lipgloss.NewStyle().
+		Foreground(headerColor).
+		Bold(true).
+		Padding(0, 1)
+
+	branchHeader := branchStyle.Render(fmt.Sprintf("🌿 %s", data.CurrentBranch))
+
+	// ========== TRACKING BRANCH ==========
+	var trackingLine string
+	if data.TrackingBranch != "" {
+		trackingStyle := lipgloss.NewStyle().
+			Foreground(statColor).
+			Padding(0, 1)
+		trackingLine = trackingStyle.Render(fmt.Sprintf("└─ tracking: %s", data.TrackingBranch))
+	}
+
+	// ========== STATS SECTION ==========
+	statsStyle := lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("250"))
+
+	var statLines []string
+
+	// Ahead/Behind
+	if data.AheadCount > 0 || data.BehindCount > 0 {
+		aheadBehind := ""
+		if data.AheadCount > 0 {
+			aheadStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))
+			aheadBehind += aheadStyle.Render(fmt.Sprintf("⬆ %d", data.AheadCount))
+		}
+		if data.BehindCount > 0 {
+			if aheadBehind != "" {
+				aheadBehind += "  "
+			}
+			behindStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+			aheadBehind += behindStyle.Render(fmt.Sprintf("⬇ %d", data.BehindCount))
+		}
+		statLines = append(statLines, statsStyle.Render(aheadBehind))
+	}
+
+	// File change summary
+	changeCount := data.ModifiedCount + data.AddedCount + data.DeletedCount + data.UntrackedCount
+
+	if changeCount > 0 {
+		summary := fmt.Sprintf("📊 %d file%s changed", changeCount, m.pluralize(changeCount))
+
+		breakdown := ""
+		if data.AddedCount > 0 {
+			breakdown += lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Render(fmt.Sprintf("+%d", data.AddedCount)) + " "
+		}
+		if data.ModifiedCount > 0 {
+			breakdown += lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render(fmt.Sprintf("~%d", data.ModifiedCount)) + " "
+		}
+		if data.DeletedCount > 0 {
+			breakdown += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(fmt.Sprintf("-%d", data.DeletedCount))
+		}
+		if data.UntrackedCount > 0 {
+			if breakdown != "" {
+				breakdown += " "
+			}
+			breakdown += lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Render(fmt.Sprintf("?%d", data.UntrackedCount))
+		}
+		if breakdown != "" {
+			summary += " (" + breakdown + ")"
+		}
+
+		statLines = append(statLines, statsStyle.Render(summary))
+	}
+
+	// Stash count
+	if data.StashCount > 0 {
+		stashStyle := lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("175"))
+		stashLine := stashStyle.Render(fmt.Sprintf("📦 %d stashed", data.StashCount))
+		statLines = append(statLines, stashLine)
+	}
+
+	statsSection := strings.Join(statLines, "\n")
+
+	// ========== DIVIDER ==========
+	dividerStyle := lipgloss.NewStyle().Foreground(borderColor)
+	divider := dividerStyle.Render(strings.Repeat("─", min(m.width-8, 76)))
+
+	// ========== FILES SECTION ==========
+	filesTitle := lipgloss.NewStyle().
+		Foreground(accentColor).
+		Bold(true).
+		Padding(0, 1).
+		Render("📝 Files")
+
+	var fileLines []string
+	visibleHeight := min(m.height-14, 20)
+	maxFiles := min(len(data.Files)-m.gitStatusScroll, visibleHeight)
+
+	if len(data.Files) == 0 {
+		cleanStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Italic(true).
+			Padding(0, 1)
+		fileLines = append(fileLines, cleanStyle.Render("✓ Working tree clean"))
+	} else {
+		statusColors := map[string]lipgloss.Color{
+			"M":  lipgloss.Color("220"),  // Yellow for modified
+			"A":  lipgloss.Color("46"),   // Green for added
+			"D":  lipgloss.Color("196"),  // Red for deleted
+			"R":  lipgloss.Color("171"),  // Magenta for renamed
+			"C":  lipgloss.Color("51"),   // Cyan for copied
+			"??": lipgloss.Color("33"),   // Blue for untracked
+		}
+
+		statusSymbols := map[string]string{
+			"M":  "✏️ ",
+			"A":  "✨",
+			"D":  "🗑️ ",
+			"R":  "↪️ ",
+			"C":  "📋",
+			"??": "❓",
+		}
+
+		for i := 0; i < maxFiles && i < visibleHeight; i++ {
+			file := data.Files[m.gitStatusScroll+i]
+			status := file.Status
+			color := statusColors[status]
+			symbol := statusSymbols[status]
+			if symbol == "" {
+				symbol = "📄"
+			}
+
+			fileStyle := lipgloss.NewStyle().
+				Foreground(color).
+				Padding(0, 1)
+
+			fileLine := fmt.Sprintf("%s %s  %s", symbol, status, file.Filename)
+			fileLines = append(fileLines, fileStyle.Render(fileLine))
+		}
+	}
+
+	filesContent := strings.Join(fileLines, "\n")
+
+	// ========== SCROLL INDICATOR ==========
+	var scrollIndicator string
+	if len(data.Files) > visibleHeight {
+		scrollStyle := lipgloss.NewStyle().Foreground(borderColor).Italic(true)
+		current := min(m.gitStatusScroll+visibleHeight, len(data.Files))
+		scrollIndicator = scrollStyle.Render(
+			fmt.Sprintf("(showing %d-%d of %d)", m.gitStatusScroll+1, current, len(data.Files)),
+		)
+	}
+
+	// ========== BORDER STYLING ==========
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(1, 2).
+		Width(min(m.width-4, 100))
+
+	// ========== ASSEMBLE CONTENT ==========
+	headerSection := lipgloss.JoinVertical(
+		lipgloss.Left,
+		branchHeader,
+		trackingLine,
+	)
+
+	contentLines := []string{
+		headerSection,
+		"",
+		statsSection,
+		divider,
+		filesTitle,
+		filesContent,
+	}
+
+	if scrollIndicator != "" {
+		contentLines = append(contentLines, "", scrollIndicator)
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
+	mainContent := borderStyle.Render(content)
+
+	// ========== FOOTER ==========
+	footerStyle := lipgloss.NewStyle().
+		Foreground(borderColor).
+		Align(lipgloss.Center).
+		Padding(0, 1)
+
+	footer := footerStyle.Render("↑/↓ j/k: scroll • q/Esc: close")
+
+	// ========== COMBINE ==========
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(accentColor).
+		Padding(0, 1)
+
+	title := titleStyle.Render("📊 Git Status")
+
+	fullView := lipgloss.JoinVertical(
+		lipgloss.Center,
+		title,
+		"",
+		mainContent,
+		"",
+		footer,
+	)
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, fullView)
+}
+
+func (m *Model) pluralize(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func (m *Model) updateFiltered() {
@@ -355,12 +575,14 @@ func (m *Model) openInBrowser(repoPath string) {
 }
 
 func (m *Model) showGitStatus(repoPath string) {
-	status, err := git.GetStatus(repoPath)
+	statusData, err := git.GetDetailedStatus(repoPath)
 	if err != nil {
 		// Show error in modal instead of failing
 		m.gitStatusContent = fmt.Sprintf("⚠ Error fetching git status:\n\n%s", err.Error())
+		m.gitStatusData = nil
 	} else {
-		m.gitStatusContent = status
+		m.gitStatusData = statusData
+		m.gitStatusContent = ""
 	}
 	m.viewMode = ViewModeGitStatus
 	m.gitStatusScroll = 0
