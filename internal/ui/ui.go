@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -25,12 +26,16 @@ const (
 	searchBoxWidth  = 50
 )
 
-type ViewMode int
+// Message types for async operations
+type gitStatusFetchMsg struct {
+	data     *git.StatusData
+	err      error
+	repoPath string
+}
 
-const (
-	ViewModeNormal ViewMode = iota
-	ViewModeGitStatus
-)
+type debounceTickMsg struct {
+	repoPath string
+}
 
 type Model struct {
 	repositories     []scanner.Repository
@@ -41,10 +46,10 @@ type Model struct {
 	width            int
 	height           int
 	err              error
-	viewMode         ViewMode
-	gitStatusContent string
 	gitStatusData    *git.StatusData
 	gitStatusScroll  int
+	gitStatusLoading bool
+	gitStatusError   error
 	config           *config.Config
 }
 
@@ -53,12 +58,15 @@ func NewModel(repos []scanner.Repository, cfg *config.Config) Model {
 		repositories: repos,
 		filtered:     repos,
 		selectedIdx:  0,
-		viewMode:     ViewModeNormal,
 		config:       cfg,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
+	// Fetch git status for first repository (no debounce delay)
+	if len(m.repositories) > 0 {
+		return m.fetchGitStatusAsync(m.repositories[0].Path)
+	}
 	return nil
 }
 
@@ -69,19 +77,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+	case debounceTickMsg:
+		// Only fetch if still on the same repo
+		if len(m.filtered) > 0 && m.selectedIdx < len(m.filtered) {
+			selected := m.filtered[m.selectedIdx]
+			if selected.Path == msg.repoPath {
+				m.gitStatusLoading = true
+				return m, m.fetchGitStatusAsync(selected.Path)
+			}
+		}
+		return m, nil
+	case gitStatusFetchMsg:
+		m.gitStatusLoading = false
+		if msg.err != nil {
+			m.gitStatusError = msg.err
+			m.gitStatusData = nil
+		} else {
+			m.gitStatusData = msg.data
+			m.gitStatusError = nil
+			m.gitStatusScroll = 0
+		}
+		return m, nil
 	}
 	return m, nil
 }
 
 func (m Model) View() string {
-	if m.viewMode == ViewModeGitStatus {
-		return m.viewGitStatus()
-	}
-	return m.viewNormal()
+	// Calculate panel widths (60/40 split)
+	totalUsableWidth := m.width - 2 // Account for outer padding
+	leftPanelWidth := int(float64(totalUsableWidth) * 0.60)
+	rightPanelWidth := totalUsableWidth - leftPanelWidth - 1 // -1 for gap
+
+	// Render both panels
+	leftPanel := m.renderLeftPanel(leftPanelWidth)
+	rightPanel := m.renderRightPanel(rightPanelWidth)
+
+	// Join horizontally
+	splitView := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+
+	// Add footer
+	footer := m.renderFooter()
+
+	return lipgloss.JoinVertical(lipgloss.Left, splitView, footer)
 }
 
-func (m Model) viewNormal() string {
-
+func (m Model) renderLeftPanel(width int) string {
+	searchBoxWidth := min(width-4, 50)
 	searchBoxStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("205")).Padding(0, 1).Width(searchBoxWidth).Align(lipgloss.Left)
 
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Bold(true)
@@ -130,74 +171,112 @@ func (m Model) viewNormal() string {
 	paginationStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
 	pagination := paginationStyle.Render(paginationInfo)
 
-	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Align(lipgloss.Center)
-	footer := footerStyle.Render("↑/↓: nav | Enter: editor | ^O: files | ^T: term | ^B: remote | ^G: status | Esc: exit")
+	content := lipgloss.JoinVertical(lipgloss.Left, searchLabel, searchBox, "", reposList, pagination)
 
-	content := lipgloss.JoinVertical(lipgloss.Center, searchLabel, searchBox, "", reposList, pagination)
-
-	centered := lipgloss.Place(m.width, m.height-footerHeight, lipgloss.Center, lipgloss.Center, content)
-
-	fullView := lipgloss.JoinVertical(lipgloss.Left, centered, footer)
-
-	return fullView
-}
-
-func (m Model) viewGitStatus() string {
-	if m.gitStatusData == nil {
-		return m.renderGitStatusError()
-	}
-	return m.renderDetailedGitStatus()
-}
-
-func (m Model) renderGitStatusError() string {
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
-	title := titleStyle.Render("📊 Git Status")
-
-	borderStyle := lipgloss.NewStyle().
+	panelStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("240")).
-		Padding(1, 2).
-		Width(min(m.width-4, 80))
+		Padding(1).
+		Width(width).
+		Height(m.height - footerHeight - 2)
 
-	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	errorMsg := errorStyle.Render(m.gitStatusContent)
-
-	content := borderStyle.Render(errorMsg)
-
-	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Align(lipgloss.Center)
-	footer := footerStyle.Render("Esc or q: close")
-
-	fullView := lipgloss.JoinVertical(lipgloss.Center, title, "", content, "", footer)
-
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, fullView)
+	return panelStyle.Render(content)
 }
 
-func (m Model) renderDetailedGitStatus() string {
-	accentColor := lipgloss.Color("205")
-	headerColor := lipgloss.Color("46")
-	statColor := lipgloss.Color("240")
-	borderColor := lipgloss.Color("240")
+func (m Model) renderRightPanel(width int) string {
+	// Panel title
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("205")).
+		Padding(0, 1)
+	title := titleStyle.Render("📊 Git Status")
 
+	var content string
+
+	if len(m.filtered) == 0 {
+		// No repositories
+		emptyStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Italic(true).
+			Padding(2, 1)
+		content = emptyStyle.Render("No repository selected")
+
+	} else if m.gitStatusLoading {
+		// Loading state
+		loadingStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Italic(true).
+			Padding(2, 1)
+		content = loadingStyle.Render("Loading git status...")
+
+	} else if m.gitStatusError != nil {
+		// Error state
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196")).
+			Padding(2, 1)
+		content = errorStyle.Render(fmt.Sprintf("⚠ Error:\n\n%s", m.gitStatusError.Error()))
+
+	} else if m.gitStatusData != nil {
+		// Render git status content
+		content = m.renderGitStatusContent(width)
+	} else {
+		// Initial state (no data fetched yet)
+		emptyStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Italic(true).
+			Padding(2, 1)
+		content = emptyStyle.Render("Select a repository to view status")
+	}
+
+	// Wrap in border
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(1).
+		Width(width).
+		Height(m.height - footerHeight - 2)
+
+	return panelStyle.Render(lipgloss.JoinVertical(lipgloss.Left, title, "", content))
+}
+
+func (m Model) renderGitStatusContent(width int) string {
 	data := m.gitStatusData
 
-	// ========== BRANCH HEADER ==========
+	// Branch header
 	branchStyle := lipgloss.NewStyle().
-		Foreground(headerColor).
+		Foreground(lipgloss.Color("46")).
 		Bold(true).
 		Padding(0, 1)
-
 	branchHeader := branchStyle.Render(fmt.Sprintf("🌿 %s", data.CurrentBranch))
 
-	// ========== TRACKING BRANCH ==========
+	// Tracking branch
 	var trackingLine string
 	if data.TrackingBranch != "" {
 		trackingStyle := lipgloss.NewStyle().
-			Foreground(statColor).
+			Foreground(lipgloss.Color("240")).
 			Padding(0, 1)
 		trackingLine = trackingStyle.Render(fmt.Sprintf("└─ tracking: %s", data.TrackingBranch))
 	}
 
-	// ========== STATS SECTION ==========
+	// Stats section
+	statsSection := m.renderStatsSection(data)
+
+	// Files section with scrolling
+	filesSection := m.renderFilesSection(data, width)
+
+	// Assemble
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		branchHeader,
+		trackingLine,
+		"",
+		statsSection,
+		"",
+		filesSection,
+	)
+}
+
+func (m Model) renderStatsSection(data *git.StatusData) string {
 	statsStyle := lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("250"))
 
 	var statLines []string
@@ -242,26 +321,18 @@ func (m Model) renderDetailedGitStatus() string {
 			breakdown += lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Render(fmt.Sprintf("?%d", data.UntrackedCount))
 		}
 		if breakdown != "" {
-			summary += " (" + breakdown + ")"
+			summary += " (" + strings.Trim(breakdown, " ") + ")"
 		}
 
 		statLines = append(statLines, statsStyle.Render(summary))
 	}
 
-	// Stash count
-	if data.StashCount > 0 {
-		stashStyle := lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("175"))
-		stashLine := stashStyle.Render(fmt.Sprintf("📦 %d stashed", data.StashCount))
-		statLines = append(statLines, stashLine)
-	}
+	return strings.Join(statLines, "\n")
+}
 
-	statsSection := strings.Join(statLines, "\n")
+func (m Model) renderFilesSection(data *git.StatusData, width int) string {
+	accentColor := lipgloss.Color("205")
 
-	// ========== DIVIDER ==========
-	dividerStyle := lipgloss.NewStyle().Foreground(borderColor)
-	divider := dividerStyle.Render(strings.Repeat("─", min(m.width-8, 76)))
-
-	// ========== FILES SECTION ==========
 	filesTitle := lipgloss.NewStyle().
 		Foreground(accentColor).
 		Bold(true).
@@ -269,7 +340,7 @@ func (m Model) renderDetailedGitStatus() string {
 		Render("📝 Files")
 
 	var fileLines []string
-	visibleHeight := min(m.height-14, 20)
+	visibleHeight := min(m.height-18, 15)
 	maxFiles := min(len(data.Files)-m.gitStatusScroll, visibleHeight)
 
 	if len(data.Files) == 0 {
@@ -280,12 +351,12 @@ func (m Model) renderDetailedGitStatus() string {
 		fileLines = append(fileLines, cleanStyle.Render("✓ Working tree clean"))
 	} else {
 		statusColors := map[string]lipgloss.Color{
-			"M":  lipgloss.Color("220"),  // Yellow for modified
-			"A":  lipgloss.Color("46"),   // Green for added
-			"D":  lipgloss.Color("196"),  // Red for deleted
-			"R":  lipgloss.Color("171"),  // Magenta for renamed
-			"C":  lipgloss.Color("51"),   // Cyan for copied
-			"??": lipgloss.Color("33"),   // Blue for untracked
+			"M":  lipgloss.Color("220"), // Yellow for modified
+			"A":  lipgloss.Color("46"),  // Green for added
+			"D":  lipgloss.Color("196"), // Red for deleted
+			"R":  lipgloss.Color("171"), // Magenta for renamed
+			"C":  lipgloss.Color("51"),  // Cyan for copied
+			"??": lipgloss.Color("33"),  // Blue for untracked
 		}
 
 		statusSymbols := map[string]string{
@@ -317,72 +388,29 @@ func (m Model) renderDetailedGitStatus() string {
 
 	filesContent := strings.Join(fileLines, "\n")
 
-	// ========== SCROLL INDICATOR ==========
+	// Scroll indicator
 	var scrollIndicator string
 	if len(data.Files) > visibleHeight {
-		scrollStyle := lipgloss.NewStyle().Foreground(borderColor).Italic(true)
+		scrollStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
 		current := min(m.gitStatusScroll+visibleHeight, len(data.Files))
 		scrollIndicator = scrollStyle.Render(
-			fmt.Sprintf("(showing %d-%d of %d)", m.gitStatusScroll+1, current, len(data.Files)),
+			fmt.Sprintf("(Shift+↑/↓ to scroll: %d-%d of %d)",
+				m.gitStatusScroll+1, current, len(data.Files)),
 		)
 	}
 
-	// ========== BORDER STYLING ==========
-	borderStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Padding(1, 2).
-		Width(min(m.width-4, 100))
-
-	// ========== ASSEMBLE CONTENT ==========
-	headerSection := lipgloss.JoinVertical(
-		lipgloss.Left,
-		branchHeader,
-		trackingLine,
-	)
-
-	contentLines := []string{
-		headerSection,
-		"",
-		statsSection,
-		divider,
-		filesTitle,
-		filesContent,
-	}
-
+	content := []string{filesTitle, filesContent}
 	if scrollIndicator != "" {
-		contentLines = append(contentLines, "", scrollIndicator)
+		content = append(content, "", scrollIndicator)
 	}
 
-	content := lipgloss.JoinVertical(lipgloss.Left, contentLines...)
-	mainContent := borderStyle.Render(content)
+	return lipgloss.JoinVertical(lipgloss.Left, content...)
+}
 
-	// ========== FOOTER ==========
-	footerStyle := lipgloss.NewStyle().
-		Foreground(borderColor).
-		Align(lipgloss.Center).
-		Padding(0, 1)
-
-	footer := footerStyle.Render("↑/↓ j/k: scroll • q/Esc: close")
-
-	// ========== COMBINE ==========
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(accentColor).
-		Padding(0, 1)
-
-	title := titleStyle.Render("📊 Git Status")
-
-	fullView := lipgloss.JoinVertical(
-		lipgloss.Center,
-		title,
-		"",
-		mainContent,
-		"",
-		footer,
-	)
-
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, fullView)
+func (m Model) renderFooter() string {
+	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Align(lipgloss.Center)
+	footer := footerStyle.Render("↑/↓: nav repos | Shift+↑/↓: scroll status | Enter: open | ^O: files | ^T: term | ^B: remote | ^G: refresh | Esc: exit")
+	return footer
 }
 
 func (m *Model) pluralize(count int) string {
@@ -425,28 +453,29 @@ func (m Model) getPaginationInfo() string {
 	return fmt.Sprintf("Showing %d of %d", itemsToShow, len(m.filtered))
 }
 
-func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Git status overlay navigation
-	if m.viewMode == ViewModeGitStatus {
-		switch msg.String() {
-		case "esc", "q":
-			m.viewMode = ViewModeNormal
-			m.gitStatusContent = ""
-			m.gitStatusScroll = 0
-			return m, nil
-		case "up", "k":
-			if m.gitStatusScroll > 0 {
-				m.gitStatusScroll--
-			}
-			return m, nil
-		case "down", "j":
-			m.gitStatusScroll++
-			return m, nil
-		}
-		return m, nil
+func (m Model) scheduleGitStatusFetch() tea.Cmd {
+	if len(m.filtered) == 0 {
+		return nil
 	}
 
-	// Normal mode keyboard handling
+	selected := m.filtered[m.selectedIdx]
+	return tea.Tick(200*time.Millisecond, func(t time.Time) tea.Msg {
+		return debounceTickMsg{repoPath: selected.Path}
+	})
+}
+
+func (m Model) fetchGitStatusAsync(repoPath string) tea.Cmd {
+	return func() tea.Msg {
+		data, err := git.GetDetailedStatus(repoPath)
+		return gitStatusFetchMsg{
+			data:     data,
+			err:      err,
+			repoPath: repoPath,
+		}
+	}
+}
+
+func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c", "esc":
 		selectedRepository = nil
@@ -473,22 +502,37 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "ctrl+g": // Show git status
+	case "ctrl+g": // Force refresh git status (bypass debounce)
 		if len(m.filtered) > 0 {
 			selected := m.filtered[m.selectedIdx]
-			m.showGitStatus(selected.Path)
+			m.gitStatusLoading = true
+			return m, m.fetchGitStatusAsync(selected.Path)
 		}
 		return m, nil
 
 	case "up", "shift+tab":
 		if m.selectedIdx > 0 {
 			m.selectedIdx--
+			return m, m.scheduleGitStatusFetch()
 		}
 		return m, nil
 
 	case "down", "tab":
 		if m.selectedIdx < len(m.filtered)-1 {
 			m.selectedIdx++
+			return m, m.scheduleGitStatusFetch()
+		}
+		return m, nil
+
+	case "shift+up": // Scroll right panel up
+		if m.gitStatusData != nil && m.gitStatusScroll > 0 {
+			m.gitStatusScroll--
+		}
+		return m, nil
+
+	case "shift+down": // Scroll right panel down
+		if m.gitStatusData != nil && m.gitStatusScroll < len(m.gitStatusData.Files)-1 {
+			m.gitStatusScroll++
 		}
 		return m, nil
 
@@ -506,6 +550,7 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.updateFiltered()
 			m.selectedIdx = 0
 			m.scrollOffset = 0
+			return m, m.scheduleGitStatusFetch()
 		}
 		return m, nil
 
@@ -514,7 +559,7 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.updateFiltered()
 		m.selectedIdx = 0
 		m.scrollOffset = 0
-		return m, nil
+		return m, m.scheduleGitStatusFetch()
 	}
 }
 
@@ -572,20 +617,6 @@ func (m *Model) openInBrowser(repoPath string) {
 	}
 
 	platform.OpenInBrowser(httpsURL)
-}
-
-func (m *Model) showGitStatus(repoPath string) {
-	statusData, err := git.GetDetailedStatus(repoPath)
-	if err != nil {
-		// Show error in modal instead of failing
-		m.gitStatusContent = fmt.Sprintf("⚠ Error fetching git status:\n\n%s", err.Error())
-		m.gitStatusData = nil
-	} else {
-		m.gitStatusData = statusData
-		m.gitStatusContent = ""
-	}
-	m.viewMode = ViewModeGitStatus
-	m.gitStatusScroll = 0
 }
 
 func GetSelectedRepository() *scanner.Repository {
