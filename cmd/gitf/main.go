@@ -105,7 +105,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 		return nil // User cancelled
 	}
 
-	if err := openRepositoryInEditor(cfg.Editor, selected.Path); err != nil {
+	if err := openRepositoryInEditor(cfg, selected.Path); err != nil {
 		return fmt.Errorf("failed to open repository: %w", err)
 	}
 
@@ -145,7 +145,41 @@ func handleSetup(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func openRepositoryInEditor(editor string, path string) error {
+// isTerminalEditor checks if the editor is terminal-based
+func isTerminalEditor(editor string) bool {
+	terminalEditors := []string{"nvim", "vim", "vi", "nano", "helix", "hx", "emacs", "micro", "ne", "joe", "jed"}
+	editorBase := strings.ToLower(editor)
+	// Handle full paths like /usr/bin/nvim
+	if idx := strings.LastIndex(editorBase, "/"); idx != -1 {
+		editorBase = editorBase[idx+1:]
+	}
+	for _, te := range terminalEditors {
+		if editorBase == te {
+			return true
+		}
+	}
+	return false
+}
+
+func openRepositoryInEditor(cfg *config.Config, path string) error {
+	editor := cfg.Editor
+
+	// If editor is terminal-based, open in a new terminal window
+	if isTerminalEditor(editor) {
+		terminal := cfg.GetTerminal()
+		if terminal != "" {
+			parts := strings.Fields(terminal)
+			if len(parts) > 0 {
+				// Build command: terminal [args] editor path
+				args := append(parts[1:], editor, path)
+				cmd := exec.Command(parts[0], args...)
+				cmd.Dir = path
+				return cmd.Start() // Fire and forget - don't wait
+			}
+		}
+	}
+
+	// GUI editors open directly
 	cmd := exec.Command(editor, path)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
