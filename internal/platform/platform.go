@@ -36,19 +36,13 @@ func DetectFileManager() string {
 func DetectTerminal() string {
 	switch runtime.GOOS {
 	case "linux":
-		// Try common Linux terminal emulators in order
-		for _, term := range []string{
-			"gnome-terminal",
-			"konsole",
-			"xfce4-terminal",
-			"alacritty",
-			"kitty",
-			"wezterm",
-			"xterm",
-		} {
-			if _, err := exec.LookPath(term); err == nil {
-				return term
-			}
+		// Use xdg-terminal-exec for default terminal (modern standard)
+		if _, err := exec.LookPath("xdg-terminal-exec"); err == nil {
+			return "xdg-terminal-exec"
+		}
+		// Fallback to x-terminal-emulator (Debian/Ubuntu)
+		if _, err := exec.LookPath("x-terminal-emulator"); err == nil {
+			return "x-terminal-emulator"
 		}
 		return ""
 	case "darwin":

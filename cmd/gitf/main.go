@@ -161,6 +161,13 @@ func isTerminalEditor(editor string) bool {
 	return false
 }
 
+// buildTerminalCommand builds the correct command to run editor in a new terminal window
+func buildTerminalCommand(terminal, editor, path string) *exec.Cmd {
+	// xdg-terminal-exec and x-terminal-emulator handle syntax automatically
+	// Syntax: xdg-terminal-exec <command> [args...]
+	return exec.Command(terminal, editor, path)
+}
+
 func openRepositoryInEditor(cfg *config.Config, path string) error {
 	editor := cfg.Editor
 
@@ -168,14 +175,9 @@ func openRepositoryInEditor(cfg *config.Config, path string) error {
 	if isTerminalEditor(editor) {
 		terminal := cfg.GetTerminal()
 		if terminal != "" {
-			parts := strings.Fields(terminal)
-			if len(parts) > 0 {
-				// Build command: terminal [args] editor path
-				args := append(parts[1:], editor, path)
-				cmd := exec.Command(parts[0], args...)
-				cmd.Dir = path
-				return cmd.Start() // Fire and forget - don't wait
-			}
+			cmd := buildTerminalCommand(terminal, editor, path)
+			cmd.Dir = path
+			return cmd.Start() // Fire and forget - don't wait
 		}
 	}
 
