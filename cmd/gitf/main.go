@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -213,9 +212,7 @@ func openRepositoryInEditor(cfg *config.Config, path string) error {
 
 			// Detach the child process so it survives parent exit
 			// This is critical for floating window launchers (Hyprland, etc.)
-			cmd.SysProcAttr = &syscall.SysProcAttr{
-				Setsid: true, // Create new session, detach from parent
-			}
+			detachProcess(cmd)
 
 			if err := cmd.Start(); err != nil {
 				return err
