@@ -104,9 +104,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	// Calculate panel widths (60/40 split)
-	totalUsableWidth := m.width - 2 // Account for outer padding
-	leftPanelWidth := int(float64(totalUsableWidth) * 0.60)
-	rightPanelWidth := totalUsableWidth - leftPanelWidth - 1 // -1 for gap
+	// Each panel has: border (2) + padding (2) = 4 extra chars
+	// We need to account for this "chrome" when calculating content widths
+	panelChrome := 4                     // border (2) + padding (2) per panel
+	totalChrome := (panelChrome * 2) + 1 // both panels + 1 char gap between them
+	totalContentWidth := m.width - totalChrome
+
+	// Ensure minimum usable width
+	if totalContentWidth < 40 {
+		totalContentWidth = 40
+	}
+
+	leftPanelWidth := int(float64(totalContentWidth) * 0.55)
+	rightPanelWidth := totalContentWidth - leftPanelWidth
 
 	// Render both panels
 	leftPanel := m.renderLeftPanel(leftPanelWidth)
