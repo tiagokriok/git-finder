@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/tiagokriok/Git-Fuzzy/internal/config"
@@ -208,7 +210,20 @@ func openRepositoryInEditor(cfg *config.Config, path string) error {
 		if terminal != "" {
 			cmd := buildTerminalCommand(terminal, editor, path)
 			cmd.Dir = path
-			return cmd.Start() // Fire and forget - don't wait
+
+			// Detach the child process so it survives parent exit
+			// This is critical for floating window launchers (Hyprland, etc.)
+			cmd.SysProcAttr = &syscall.SysProcAttr{
+				Setsid: true, // Create new session, detach from parent
+			}
+
+			if err := cmd.Start(); err != nil {
+				return err
+			}
+
+			// Small delay to ensure process is fully spawned before parent exits
+			time.Sleep(50 * time.Millisecond)
+			return nil
 		}
 	}
 
