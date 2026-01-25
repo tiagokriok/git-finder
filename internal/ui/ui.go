@@ -343,6 +343,13 @@ func (m Model) renderFilesSection(data *git.StatusData, width int) string {
 	visibleHeight := min(m.height-18, 15)
 	maxFiles := min(len(data.Files)-m.gitStatusScroll, visibleHeight)
 
+	// Calculate max filename width: panel width - borders - padding - prefix (symbol + status)
+	// Prefix is roughly: emoji(2) + space(1) + status(2) + spaces(2) + padding(2) = ~9 chars
+	maxFilenameWidth := width - 12
+	if maxFilenameWidth < 20 {
+		maxFilenameWidth = 20
+	}
+
 	if len(data.Files) == 0 {
 		cleanStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).
@@ -381,7 +388,9 @@ func (m Model) renderFilesSection(data *git.StatusData, width int) string {
 				Foreground(color).
 				Padding(0, 1)
 
-			fileLine := fmt.Sprintf("%s %s  %s", symbol, status, file.Filename)
+			// Truncate long filenames from the left
+			filename := truncatePathLeft(file.Filename, maxFilenameWidth)
+			fileLine := fmt.Sprintf("%s %s  %s", symbol, status, filename)
 			fileLines = append(fileLines, fileStyle.Render(fileLine))
 		}
 	}
@@ -573,6 +582,30 @@ func formatRepoPath(fullPath string) string {
 		return strings.TrimPrefix(fullPath, homeDir+"/")
 	}
 	return fullPath
+}
+
+// truncatePathLeft truncates a path from the left if it exceeds maxWidth
+// Example: "src/components/dialogs/file.vue" -> "…/dialogs/file.vue"
+func truncatePathLeft(path string, maxWidth int) string {
+	if len(path) <= maxWidth {
+		return path
+	}
+
+	// Need at least space for "…/" + some content
+	if maxWidth < 5 {
+		return path[:maxWidth]
+	}
+
+	// Find a good truncation point (prefer path separators)
+	targetLen := maxWidth - 1 // -1 for ellipsis
+	truncated := path[len(path)-targetLen:]
+
+	// Try to start at a path separator for cleaner output
+	if idx := strings.Index(truncated, "/"); idx != -1 && idx < len(truncated)-1 {
+		truncated = truncated[idx:]
+	}
+
+	return "…" + truncated
 }
 
 func (m *Model) openFileManager(repoPath string) {
