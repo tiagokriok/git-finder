@@ -2,6 +2,7 @@ package platform
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 )
@@ -63,6 +64,78 @@ func DetectTerminal() string {
 	default:
 		return ""
 	}
+}
+
+// DetectCurrentTerminal detects the terminal emulator the app is currently running in
+// by checking terminal-specific environment variables
+func DetectCurrentTerminal() string {
+	// Check terminal-specific environment variables
+	terminalChecks := []struct {
+		envVar   string
+		terminal string
+	}{
+		// Ghostty
+		{"GHOSTTY_RESOURCES_DIR", "ghostty"},
+		// Kitty
+		{"KITTY_WINDOW_ID", "kitty"},
+		// Alacritty
+		{"ALACRITTY_SOCKET", "alacritty"},
+		{"ALACRITTY_LOG", "alacritty"},
+		// WezTerm
+		{"WEZTERM_PANE", "wezterm"},
+		{"WEZTERM_EXECUTABLE", "wezterm"},
+		// iTerm2 (macOS)
+		{"ITERM_SESSION_ID", "iterm2"},
+		// Hyper
+		{"HYPER_TERM", "hyper"},
+		// Terminology
+		{"TERMINOLOGY", "terminology"},
+		// Tilix
+		{"TILIX_ID", "tilix"},
+		// Konsole
+		{"KONSOLE_VERSION", "konsole"},
+		// GNOME Terminal
+		{"GNOME_TERMINAL_SCREEN", "gnome-terminal"},
+		// xterm / generic
+		{"XTERM_VERSION", "xterm"},
+	}
+
+	for _, check := range terminalChecks {
+		if os.Getenv(check.envVar) != "" {
+			// Verify the terminal is actually installed
+			if _, err := exec.LookPath(check.terminal); err == nil {
+				return check.terminal
+			}
+		}
+	}
+
+	// Check TERM_PROGRAM (used by many terminals)
+	if termProgram := os.Getenv("TERM_PROGRAM"); termProgram != "" {
+		// Normalize common values
+		switch termProgram {
+		case "Apple_Terminal":
+			return "open -a Terminal"
+		case "iTerm.app":
+			return "open -a iTerm"
+		case "vscode":
+			// VS Code integrated terminal - fall through to system detection
+		default:
+			// Try using it directly if it's in PATH
+			if _, err := exec.LookPath(termProgram); err == nil {
+				return termProgram
+			}
+		}
+	}
+
+	// Check user-set TERMINAL env var
+	if terminal := os.Getenv("TERMINAL"); terminal != "" {
+		if _, err := exec.LookPath(terminal); err == nil {
+			return terminal
+		}
+	}
+
+	// Fallback to system detection
+	return ""
 }
 
 // OpenInBrowser opens a URL in the default browser

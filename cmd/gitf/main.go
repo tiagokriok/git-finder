@@ -162,10 +162,41 @@ func isTerminalEditor(editor string) bool {
 }
 
 // buildTerminalCommand builds the correct command to run editor in a new terminal window
+// Different terminals have different syntax for executing commands
 func buildTerminalCommand(terminal, editor, path string) *exec.Cmd {
+	switch terminal {
+	// Terminals using -e flag for command execution
+	case "ghostty", "alacritty", "xterm", "urxvt", "rxvt", "terminology":
+		return exec.Command(terminal, "-e", editor, path)
+
+	// Kitty uses special syntax
+	case "kitty":
+		return exec.Command(terminal, "--directory", path, editor, path)
+
+	// WezTerm uses start subcommand
+	case "wezterm":
+		return exec.Command(terminal, "start", "--cwd", path, editor, path)
+
+	// Konsole uses -e with workdir
+	case "konsole":
+		return exec.Command(terminal, "--workdir", path, "-e", editor, path)
+
+	// GNOME Terminal uses -- to separate args
+	case "gnome-terminal":
+		return exec.Command(terminal, "--working-directory", path, "--", editor, path)
+
+	// Tilix uses -e
+	case "tilix":
+		return exec.Command(terminal, "--working-directory", path, "-e", editor+" "+path)
+
 	// xdg-terminal-exec and x-terminal-emulator handle syntax automatically
-	// Syntax: xdg-terminal-exec <command> [args...]
-	return exec.Command(terminal, editor, path)
+	case "xdg-terminal-exec", "x-terminal-emulator":
+		return exec.Command(terminal, editor, path)
+
+	// Default: try -e flag (most common)
+	default:
+		return exec.Command(terminal, "-e", editor, path)
+	}
 }
 
 func openRepositoryInEditor(cfg *config.Config, path string) error {

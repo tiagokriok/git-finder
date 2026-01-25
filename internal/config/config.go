@@ -106,10 +106,15 @@ func (c *Config) GetFileManager() string {
 	return platform.DetectFileManager()
 }
 
-// GetTerminal returns configured terminal or auto-detects if empty
+// GetTerminal returns configured terminal, detects current terminal, or falls back to system default
 func (c *Config) GetTerminal() string {
 	if c.Terminal != "" {
 		return c.Terminal
 	}
+	// Try to detect which terminal we're running in
+	if current := platform.DetectCurrentTerminal(); current != "" {
+		return current
+	}
+	// Fall back to system default terminal
 	return platform.DetectTerminal()
 }
